@@ -1,0 +1,1288 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Gamma Strategy V4 Backtest - 基于数据分析优化
+// 核心改进: V4信号逻辑 + 47天完整Key Levels预设 + 标准化动量阈值
+
+//@version=5
+strategy("Gamma Strategy V4 Backtest", overlay=true,
+     initial_capital=100000,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=10,
+     commission_type=strategy.commission.percent,
+     commission_value=0.01,
+     slippage=1)
+
+// ============================================================
+// 日期预设选择 - 47天完整数据 (2025-10-02 至 2025-12-08)
+// ============================================================
+group_date = "=== 日期预设 (快速切换) ==="
+date_preset = input.string("2025-12-08", "选择日期",
+     options=["自定义",
+              "2025-12-08", "2025-12-05", "2025-12-04", "2025-12-03", "2025-12-02",
+              "2025-12-01", "2025-11-28", "2025-11-26", "2025-11-25", "2025-11-24",
+              "2025-11-21", "2025-11-20", "2025-11-19", "2025-11-18", "2025-11-17",
+              "2025-11-14", "2025-11-13", "2025-11-12", "2025-11-11", "2025-11-10",
+              "2025-11-07", "2025-11-06", "2025-11-05", "2025-11-04", "2025-11-03",
+              "2025-10-31", "2025-10-30", "2025-10-29", "2025-10-28", "2025-10-27",
+              "2025-10-24", "2025-10-23", "2025-10-22", "2025-10-21", "2025-10-20",
+              "2025-10-17", "2025-10-16", "2025-10-15", "2025-10-14", "2025-10-13",
+              "2025-10-10", "2025-10-09", "2025-10-08", "2025-10-07", "2025-10-06",
+              "2025-10-03", "2025-10-02"],
+     group=group_date,
+     tooltip="选择预设日期自动填充Key Levels，或选择'自定义'手动输入")
+
+// 包含47天完整的Key Levels预设数据 (2025-10-02 至 2025-12-08)
+
+use_date_preset = date_preset != "自定义"
+
+// Hedge Wall by date (实际数据 - 47天完整)
+preset_hw = switch date_preset
+    "2025-12-08" => 6860.0
+    "2025-12-05" => 6795.0
+    "2025-12-04" => 6795.0
+    "2025-12-03" => 6795.0
+    "2025-12-02" => 6785.0
+    "2025-12-01" => 6815.0
+    "2025-11-28" => 6785.0
+    "2025-11-26" => 6730.0
+    "2025-11-25" => 6680.0
+    "2025-11-24" => 6670.0
+    "2025-11-21" => 6710.0
+    "2025-11-20" => 6710.0
+    "2025-11-19" => 6715.0
+    "2025-11-18" => 6730.0
+    "2025-11-17" => 6770.0
+    "2025-11-14" => 6780.0
+    "2025-11-13" => 6845.0
+    "2025-11-12" => 6795.0
+    "2025-11-11" => 6795.0
+    "2025-11-10" => 6730.0
+    "2025-11-07" => 6770.0
+    "2025-11-06" => 6815.0
+    "2025-11-05" => 6795.0
+    "2025-11-04" => 6845.0
+    "2025-11-03" => 6820.0
+    "2025-10-31" => 6825.0
+    "2025-10-30" => 6845.0
+    "2025-10-29" => 6745.0
+    "2025-10-28" => 6845.0
+    "2025-10-27" => 6745.0
+    "2025-10-24" => 6720.0
+    "2025-10-23" => 6690.0
+    "2025-10-22" => 6730.0
+    "2025-10-21" => 6715.0
+    "2025-10-20" => 6680.0
+    "2025-10-17" => 6640.0
+    "2025-10-16" => 6680.0
+    "2025-10-15" => 6660.0
+    "2025-10-14" => 6670.0
+    "2025-10-13" => 6680.0
+    "2025-10-10" => 6725.0
+    "2025-10-09" => 6725.0
+    "2025-10-08" => 6720.0
+    "2025-10-07" => 6695.0
+    "2025-10-06" => 6695.0
+    "2025-10-03" => 6695.0
+    "2025-10-02" => 6680.0
+    => 6860.0
+
+// Call Wall by date (47天完整)
+preset_cw = switch date_preset
+    "2025-12-08" => 7000.0
+    "2025-12-05" => 7000.0
+    "2025-12-04" => 7000.0
+    "2025-12-03" => 7000.0
+    "2025-12-02" => 7000.0
+    "2025-12-01" => 6875.0
+    "2025-11-28" => 6850.0
+    "2025-11-26" => 6800.0
+    "2025-11-25" => 7000.0
+    "2025-11-24" => 7000.0
+    "2025-11-21" => 7000.0
+    "2025-11-20" => 7000.0
+    "2025-11-19" => 7000.0
+    "2025-11-18" => 7000.0
+    "2025-11-17" => 7000.0
+    "2025-11-14" => 7000.0
+    "2025-11-13" => 7000.0
+    "2025-11-12" => 6900.0
+    "2025-11-11" => 7000.0
+    "2025-11-10" => 7000.0
+    "2025-11-07" => 7000.0
+    "2025-11-06" => 7000.0
+    "2025-11-05" => 7000.0
+    "2025-11-04" => 7000.0
+    "2025-11-03" => 7000.0
+    "2025-10-31" => 7000.0
+    "2025-10-30" => 7000.0
+    "2025-10-29" => 7000.0
+    "2025-10-28" => 6900.0
+    "2025-10-27" => 7000.0
+    "2025-10-24" => 6800.0
+    "2025-10-23" => 7000.0
+    "2025-10-22" => 6800.0
+    "2025-10-21" => 6800.0
+    "2025-10-20" => 7000.0
+    "2025-10-17" => 7000.0
+    "2025-10-16" => 7000.0
+    "2025-10-15" => 7000.0
+    "2025-10-14" => 7000.0
+    "2025-10-13" => 7000.0
+    "2025-10-10" => 6800.0
+    "2025-10-09" => 6775.0
+    "2025-10-08" => 6800.0
+    "2025-10-07" => 6800.0
+    "2025-10-06" => 6800.0
+    "2025-10-03" => 6800.0
+    "2025-10-02" => 6750.0
+    => 7000.0
+
+// Put Wall by date (47天完整)
+preset_pw = switch date_preset
+    "2025-12-08" => 6500.0
+    "2025-12-05" => 6500.0
+    "2025-12-04" => 6500.0
+    "2025-12-03" => 6500.0
+    "2025-12-02" => 6500.0
+    "2025-12-01" => 6810.0
+    "2025-11-28" => 6780.0
+    "2025-11-26" => 6500.0
+    "2025-11-25" => 6500.0
+    "2025-11-24" => 6500.0
+    "2025-11-21" => 6500.0
+    "2025-11-20" => 6500.0
+    "2025-11-19" => 6500.0
+    "2025-11-18" => 6500.0
+    "2025-11-17" => 6650.0
+    "2025-11-14" => 6700.0
+    "2025-11-13" => 6500.0
+    "2025-11-12" => 6500.0
+    "2025-11-11" => 6500.0
+    "2025-11-10" => 6500.0
+    "2025-11-07" => 6700.0
+    "2025-11-06" => 6700.0
+    "2025-11-05" => 6700.0
+    "2025-11-04" => 6500.0
+    "2025-11-03" => 6500.0
+    "2025-10-31" => 6500.0
+    "2025-10-30" => 6500.0
+    "2025-10-29" => 6840.0
+    "2025-10-28" => 6840.0
+    "2025-10-27" => 6500.0
+    "2025-10-24" => 6500.0
+    "2025-10-23" => 6500.0
+    "2025-10-22" => 6500.0
+    "2025-10-21" => 6500.0
+    "2025-10-20" => 6500.0
+    "2025-10-17" => 6500.0
+    "2025-10-16" => 6500.0
+    "2025-10-15" => 6500.0
+    "2025-10-14" => 6600.0
+    "2025-10-13" => 6500.0
+    "2025-10-10" => 6650.0
+    "2025-10-09" => 6720.0
+    "2025-10-08" => 6680.0
+    "2025-10-07" => 6500.0
+    "2025-10-06" => 6500.0
+    "2025-10-03" => 6500.0
+    "2025-10-02" => 6500.0
+    => 6500.0
+
+// Implied High by date (47天完整, 0=需要用implied_move计算)
+preset_ih = switch date_preset
+    "2025-12-08" => 6915.76
+    "2025-12-05" => 6907.35
+    "2025-12-04" => 6909.49
+    "2025-12-03" => 6860.72
+    "2025-12-02" => 6874.61
+    "2025-12-01" => 6844.88
+    "2025-11-28" => 6866.85
+    "2025-11-26" => 6836.22
+    "2025-11-25" => 6744.27
+    "2025-11-24" => 6684.92
+    "2025-11-21" => 6605.86
+    "2025-11-20" => 6787.24
+    "2025-11-19" => 6664.47
+    "2025-11-18" => 6679.69
+    "2025-11-17" => 6756.48
+    "2025-11-14" => 6713.52
+    "2025-11-13" => 6862.65
+    "2025-11-12" => 6912.79
+    "2025-11-11" => 0.0
+    "2025-11-10" => 6832.83
+    "2025-11-07" => 6741.29
+    "2025-11-06" => 6828.98
+    "2025-11-05" => 6813.81
+    "2025-11-04" => 6826.23
+    "2025-11-03" => 6922.19
+    "2025-10-31" => 6915.33
+    "2025-10-30" => 6905.48
+    "2025-10-29" => 6950.03
+    "2025-10-28" => 6936.21
+    "2025-10-27" => 6893.89
+    "2025-10-24" => 6830.66
+    "2025-10-23" => 6745.35
+    "2025-10-22" => 6785.35
+    "2025-10-21" => 6781.77
+    "2025-10-20" => 6737.06
+    "2025-10-17" => 0.0
+    "2025-10-16" => 6732.74
+    "2025-10-15" => 6735.65
+    "2025-10-14" => 6735.65
+    "2025-10-13" => 6671.00
+    "2025-10-10" => 6781.21
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6767.93
+    "2025-10-07" => 0.0
+    "2025-10-06" => 6782.44
+    "2025-10-03" => 6764.71
+    "2025-10-02" => 0.0
+    => 6915.76
+
+// Implied Low by date (47天完整, 0=需要用implied_move计算)
+preset_il = switch date_preset
+    "2025-12-08" => 6834.64
+    "2025-12-05" => 6824.95
+    "2025-12-04" => 6821.61
+    "2025-12-03" => 6776.18
+    "2025-12-02" => 6789.89
+    "2025-12-01" => 6757.82
+    "2025-11-28" => 6775.45
+    "2025-11-26" => 6743.88
+    "2025-11-25" => 6655.83
+    "2025-11-24" => 6598.58
+    "2025-11-21" => 6521.84
+    "2025-11-20" => 6702.26
+    "2025-11-19" => 6581.03
+    "2025-11-18" => 6593.41
+    "2025-11-17" => 6669.22
+    "2025-11-14" => 6630.78
+    "2025-11-13" => 6784.85
+    "2025-11-12" => 6823.51
+    "2025-11-11" => 0.0
+    "2025-11-10" => 6747.27
+    "2025-11-07" => 6654.21
+    "2025-11-06" => 6742.12
+    "2025-11-05" => 6728.49
+    "2025-11-04" => 6738.07
+    "2025-11-03" => 6835.51
+    "2025-10-31" => 6827.37
+    "2025-10-30" => 6819.02
+    "2025-10-29" => 6869.87
+    "2025-10-28" => 6847.99
+    "2025-10-27" => 6806.21
+    "2025-10-24" => 6742.44
+    "2025-10-23" => 6659.55
+    "2025-10-22" => 6699.05
+    "2025-10-21" => 6692.83
+    "2025-10-20" => 6654.04
+    "2025-10-17" => 0.0
+    "2025-10-16" => 6649.76
+    "2025-10-15" => 6648.65
+    "2025-10-14" => 6648.65
+    "2025-10-13" => 6590.10
+    "2025-10-10" => 6705.69
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6685.87
+    "2025-10-07" => 0.0
+    "2025-10-06" => 6698.86
+    "2025-10-03" => 6682.69
+    "2025-10-02" => 0.0
+    => 6834.64
+
+// Support levels by date (47天完整 - 从YAML文件的support数组)
+preset_sup1 = switch date_preset
+    "2025-12-08" => 6850.0
+    "2025-12-05" => 6850.0
+    "2025-12-04" => 6800.0
+    "2025-12-03" => 6800.0
+    "2025-12-02" => 6800.0
+    "2025-12-01" => 6775.0
+    "2025-11-28" => 6800.0
+    "2025-11-26" => 6775.0
+    "2025-11-25" => 6600.0
+    "2025-11-24" => 6600.0
+    "2025-11-21" => 6500.0
+    "2025-11-20" => 6700.0
+    "2025-11-19" => 6600.0
+    "2025-11-18" => 6600.0
+    "2025-11-17" => 6700.0
+    "2025-11-14" => 6600.0
+    "2025-11-13" => 6700.0
+    "2025-11-12" => 6700.0
+    "2025-11-11" => 6700.0
+    "2025-11-10" => 6700.0
+    "2025-11-07" => 6700.0
+    "2025-11-06" => 6700.0
+    "2025-11-05" => 6700.0
+    "2025-11-04" => 6800.0
+    "2025-11-03" => 6800.0
+    "2025-10-31" => 6800.0
+    "2025-10-30" => 6850.0
+    "2025-10-29" => 6850.0
+    "2025-10-28" => 6840.0
+    "2025-10-27" => 6825.0
+    "2025-10-24" => 6700.0
+    "2025-10-23" => 6700.0
+    "2025-10-22" => 6735.0
+    "2025-10-21" => 6700.0
+    "2025-10-20" => 6600.0
+    "2025-10-17" => 6600.0
+    "2025-10-16" => 6600.0
+    "2025-10-15" => 6600.0
+    "2025-10-14" => 6600.0
+    "2025-10-13" => 6600.0
+    "2025-10-10" => 6700.0
+    "2025-10-09" => 6750.0
+    "2025-10-08" => 6700.0
+    "2025-10-07" => 6700.0
+    "2025-10-06" => 6700.0
+    "2025-10-03" => 6700.0
+    "2025-10-02" => 6700.0
+    => 6850.0
+
+preset_sup2 = switch date_preset
+    "2025-12-08" => 6820.0
+    "2025-12-05" => 6820.0
+    "2025-12-04" => 6775.0
+    "2025-12-03" => 6775.0
+    "2025-12-02" => 6775.0
+    "2025-12-01" => 6700.0
+    "2025-11-28" => 6780.0
+    "2025-11-26" => 6750.0
+    "2025-11-25" => 6500.0
+    "2025-11-24" => 6500.0
+    "2025-11-21" => 6350.0
+    "2025-11-20" => 6600.0
+    "2025-11-19" => 6500.0
+    "2025-11-18" => 6500.0
+    "2025-11-17" => 6600.0
+    "2025-11-14" => 6500.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 6600.0
+    "2025-11-10" => 6600.0
+    "2025-11-07" => 6600.0
+    "2025-11-06" => 6600.0
+    "2025-11-05" => 6600.0
+    "2025-11-04" => 6700.0
+    "2025-11-03" => 6700.0
+    "2025-10-31" => 6700.0
+    "2025-10-30" => 6800.0
+    "2025-10-29" => 6800.0
+    "2025-10-28" => 6800.0
+    "2025-10-27" => 6800.0
+    "2025-10-24" => 6600.0
+    "2025-10-23" => 6650.0
+    "2025-10-22" => 6700.0
+    "2025-10-21" => 6650.0
+    "2025-10-20" => 6500.0
+    "2025-10-17" => 6500.0
+    "2025-10-16" => 6500.0
+    "2025-10-15" => 6500.0
+    "2025-10-14" => 6500.0
+    "2025-10-13" => 6575.0
+    "2025-10-10" => 6650.0
+    "2025-10-09" => 6720.0
+    "2025-10-08" => 6670.0
+    "2025-10-07" => 6680.0
+    "2025-10-06" => 6680.0
+    "2025-10-03" => 6680.0
+    "2025-10-02" => 6680.0
+    => 6820.0
+
+preset_sup3 = switch date_preset
+    "2025-12-08" => 6800.0
+    "2025-12-05" => 6800.0
+    "2025-12-04" => 6700.0
+    "2025-12-03" => 6700.0
+    "2025-12-02" => 6700.0
+    "2025-12-01" => 0.0
+    "2025-11-28" => 6750.0
+    "2025-11-26" => 0.0
+    "2025-11-25" => 6350.0
+    "2025-11-24" => 0.0
+    "2025-11-21" => 0.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 0.0
+    "2025-11-18" => 0.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 0.0
+    "2025-11-10" => 0.0
+    "2025-11-07" => 0.0
+    "2025-11-06" => 0.0
+    "2025-11-05" => 0.0
+    "2025-11-04" => 0.0
+    "2025-11-03" => 0.0
+    "2025-10-31" => 0.0
+    "2025-10-30" => 0.0
+    "2025-10-29" => 0.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 0.0
+    "2025-10-23" => 0.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 0.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 0.0
+    "2025-10-07" => 0.0
+    "2025-10-06" => 0.0
+    "2025-10-03" => 0.0
+    "2025-10-02" => 0.0
+    => 6800.0
+
+preset_sup4 = switch date_preset
+    "2025-12-08" => 6725.0
+    "2025-12-05" => 6725.0
+    "2025-12-04" => 6700.0
+    "2025-12-03" => 6700.0
+    "2025-12-02" => 6700.0
+    "2025-12-01" => 0.0
+    "2025-11-28" => 6700.0
+    "2025-11-26" => 0.0
+    "2025-11-25" => 0.0
+    "2025-11-24" => 0.0
+    "2025-11-21" => 0.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 0.0
+    "2025-11-18" => 0.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 0.0
+    "2025-11-10" => 0.0
+    "2025-11-07" => 0.0
+    "2025-11-06" => 0.0
+    "2025-11-05" => 0.0
+    "2025-11-04" => 0.0
+    "2025-11-03" => 0.0
+    "2025-10-31" => 0.0
+    "2025-10-30" => 0.0
+    "2025-10-29" => 0.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 0.0
+    "2025-10-23" => 0.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 0.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 0.0
+    "2025-10-07" => 0.0
+    "2025-10-06" => 0.0
+    "2025-10-03" => 0.0
+    "2025-10-02" => 0.0
+    => 6725.0
+
+// Resistance levels by date (47天完整 - 从YAML文件的resistance数组)
+preset_res1 = switch date_preset
+    "2025-12-08" => 6900.0
+    "2025-12-05" => 6900.0
+    "2025-12-04" => 6900.0
+    "2025-12-03" => 6900.0
+    "2025-12-02" => 6850.0
+    "2025-12-01" => 6810.0
+    "2025-11-28" => 6900.0
+    "2025-11-26" => 6800.0
+    "2025-11-25" => 6700.0
+    "2025-11-24" => 6700.0
+    "2025-11-21" => 6600.0
+    "2025-11-20" => 6800.0
+    "2025-11-19" => 6700.0
+    "2025-11-18" => 6700.0
+    "2025-11-17" => 6800.0
+    "2025-11-14" => 6700.0
+    "2025-11-13" => 6900.0
+    "2025-11-12" => 6900.0
+    "2025-11-11" => 6850.0
+    "2025-11-10" => 6800.0
+    "2025-11-07" => 6800.0
+    "2025-11-06" => 6800.0
+    "2025-11-05" => 6800.0
+    "2025-11-04" => 6900.0
+    "2025-11-03" => 6900.0
+    "2025-10-31" => 6900.0
+    "2025-10-30" => 6950.0
+    "2025-10-29" => 6915.0
+    "2025-10-28" => 6895.0
+    "2025-10-27" => 6875.0
+    "2025-10-24" => 6825.0
+    "2025-10-23" => 6750.0
+    "2025-10-22" => 6800.0
+    "2025-10-21" => 6800.0
+    "2025-10-20" => 6700.0
+    "2025-10-17" => 6700.0
+    "2025-10-16" => 6700.0
+    "2025-10-15" => 6700.0
+    "2025-10-14" => 6700.0
+    "2025-10-13" => 6700.0
+    "2025-10-10" => 6750.0
+    "2025-10-09" => 6770.0
+    "2025-10-08" => 6730.0
+    "2025-10-07" => 6750.0
+    "2025-10-06" => 6750.0
+    "2025-10-03" => 6750.0
+    "2025-10-02" => 6750.0
+    => 6900.0
+
+preset_res2 = switch date_preset
+    "2025-12-08" => 6925.0
+    "2025-12-05" => 0.0
+    "2025-12-04" => 0.0
+    "2025-12-03" => 6850.0
+    "2025-12-02" => 6900.0
+    "2025-12-01" => 6850.0
+    "2025-11-28" => 6850.0
+    "2025-11-26" => 6825.0
+    "2025-11-25" => 6750.0
+    "2025-11-24" => 6750.0
+    "2025-11-21" => 6700.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 6800.0
+    "2025-11-18" => 6800.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 7000.0
+    "2025-11-12" => 6920.0
+    "2025-11-11" => 6900.0
+    "2025-11-10" => 6850.0
+    "2025-11-07" => 6900.0
+    "2025-11-06" => 6900.0
+    "2025-11-05" => 6900.0
+    "2025-11-04" => 7000.0
+    "2025-11-03" => 6950.0
+    "2025-10-31" => 6950.0
+    "2025-10-30" => 7000.0
+    "2025-10-29" => 7000.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 6800.0
+    "2025-10-23" => 6800.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 6775.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6750.0
+    "2025-10-07" => 6765.0
+    "2025-10-06" => 6765.0
+    "2025-10-03" => 6765.0
+    "2025-10-02" => 6765.0
+    => 6925.0
+
+preset_res3 = switch date_preset
+    "2025-12-08" => 6950.0
+    "2025-12-05" => 0.0
+    "2025-12-04" => 0.0
+    "2025-12-03" => 6900.0
+    "2025-12-02" => 6950.0
+    "2025-12-01" => 0.0
+    "2025-11-28" => 6840.0
+    "2025-11-26" => 0.0
+    "2025-11-25" => 6800.0
+    "2025-11-24" => 0.0
+    "2025-11-21" => 0.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 0.0
+    "2025-11-18" => 0.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 0.0
+    "2025-11-10" => 0.0
+    "2025-11-07" => 0.0
+    "2025-11-06" => 0.0
+    "2025-11-05" => 0.0
+    "2025-11-04" => 0.0
+    "2025-11-03" => 0.0
+    "2025-10-31" => 0.0
+    "2025-10-30" => 0.0
+    "2025-10-29" => 0.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 0.0
+    "2025-10-23" => 0.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 0.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 0.0
+    "2025-10-07" => 0.0
+    "2025-10-06" => 0.0
+    "2025-10-03" => 0.0
+    "2025-10-02" => 0.0
+    => 6950.0
+
+preset_res4 = switch date_preset
+    "2025-12-08" => 7000.0
+    "2025-12-05" => 0.0
+    "2025-12-04" => 0.0
+    "2025-12-03" => 7000.0
+    "2025-12-02" => 7000.0
+    "2025-12-01" => 0.0
+    "2025-11-28" => 7000.0
+    "2025-11-26" => 0.0
+    "2025-11-25" => 0.0
+    "2025-11-24" => 0.0
+    "2025-11-21" => 0.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 0.0
+    "2025-11-18" => 0.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 0.0
+    "2025-11-10" => 0.0
+    "2025-11-07" => 0.0
+    "2025-11-06" => 0.0
+    "2025-11-05" => 0.0
+    "2025-11-04" => 0.0
+    "2025-11-03" => 0.0
+    "2025-10-31" => 0.0
+    "2025-10-30" => 0.0
+    "2025-10-29" => 0.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 0.0
+    "2025-10-23" => 0.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 0.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 0.0
+    "2025-10-07" => 0.0
+    "2025-10-06" => 0.0
+    "2025-10-03" => 0.0
+    "2025-10-02" => 0.0
+    => 7000.0
+
+// Implied Move by date (47天完整 - 用于计算缺失的implied_high/low)
+preset_im = switch date_preset
+    "2025-12-08" => 0.0059
+    "2025-12-05" => 0.0060
+    "2025-12-04" => 0.0064
+    "2025-12-03" => 0.0062
+    "2025-12-02" => 0.0062
+    "2025-12-01" => 0.0064
+    "2025-11-28" => 0.0067
+    "2025-11-26" => 0.0068
+    "2025-11-25" => 0.0066
+    "2025-11-24" => 0.0065
+    "2025-11-21" => 0.0064
+    "2025-11-20" => 0.0063
+    "2025-11-19" => 0.0063
+    "2025-11-18" => 0.0065
+    "2025-11-17" => 0.0065
+    "2025-11-14" => 0.0062
+    "2025-11-13" => 0.0057
+    "2025-11-12" => 0.0065
+    "2025-11-11" => 0.0063
+    "2025-11-10" => 0.0063
+    "2025-11-07" => 0.0065
+    "2025-11-06" => 0.0064
+    "2025-11-05" => 0.0064
+    "2025-11-04" => 0.0065
+    "2025-11-03" => 0.0063
+    "2025-10-31" => 0.0064
+    "2025-10-30" => 0.0063
+    "2025-10-29" => 0.0058
+    "2025-10-28" => 0.0064
+    "2025-10-27" => 0.0064
+    "2025-10-24" => 0.0065
+    "2025-10-23" => 0.0064
+    "2025-10-22" => 0.0064
+    "2025-10-21" => 0.0066
+    "2025-10-20" => 0.0062
+    "2025-10-17" => 0.0065
+    "2025-10-16" => 0.0062
+    "2025-10-15" => 0.0065
+    "2025-10-14" => 0.0064
+    "2025-10-13" => 0.0061
+    "2025-10-10" => 0.0056
+    "2025-10-09" => 0.0063
+    "2025-10-08" => 0.0061
+    "2025-10-07" => 0.0060
+    "2025-10-06" => 0.0062
+    "2025-10-03" => 0.0061
+    "2025-10-02" => 0.0061
+    => 0.0059
+
+// ============================================================
+// 输入参数 - Key Levels (自定义模式或覆盖预设)
+// ============================================================
+group_levels = "=== Key Levels (自定义模式生效) ==="
+custom_hedge_wall = input.float(6050.0, "Hedge Wall", group=group_levels, tooltip="期权Gamma对冲墙位置")
+custom_call_wall = input.float(6100.0, "Call Wall", group=group_levels)
+custom_put_wall = input.float(5950.0, "Put Wall", group=group_levels)
+custom_implied_high = input.float(6080.0, "Implied High (预期最高)", group=group_levels)
+custom_implied_low = input.float(5980.0, "Implied Low (预期最低)", group=group_levels)
+
+// 最终使用的Key Levels
+hedge_wall = use_date_preset ? preset_hw : custom_hedge_wall
+call_wall = use_date_preset ? preset_cw : custom_call_wall
+put_wall = use_date_preset ? preset_pw : custom_put_wall
+
+// Implied High/Low - 处理缺失值 (0值时用implied_move计算)
+daily_open = request.security(syminfo.tickerid, "D", open)
+raw_ih = use_date_preset ? preset_ih : custom_implied_high
+raw_il = use_date_preset ? preset_il : custom_implied_low
+im = use_date_preset ? preset_im : 0.006
+
+implied_high = raw_ih > 0 ? raw_ih : daily_open * (1 + im)
+implied_low = raw_il > 0 ? raw_il : daily_open * (1 - im)
+
+// Support Levels (多个支撑位)
+group_support = "=== Support Levels (自定义模式生效) ==="
+custom_support1 = input.float(6000.0, "Support 1 (最近)", group=group_support)
+custom_support2 = input.float(5980.0, "Support 2", group=group_support)
+custom_support3 = input.float(5950.0, "Support 3", group=group_support)
+custom_support4 = input.float(5900.0, "Support 4", group=group_support)
+custom_support5 = input.float(0.0, "Support 5 (0=禁用)", group=group_support)
+
+// 最终使用的Support Levels
+support1 = use_date_preset ? preset_sup1 : custom_support1
+support2 = use_date_preset ? preset_sup2 : custom_support2
+support3 = use_date_preset ? preset_sup3 : custom_support3
+support4 = use_date_preset ? preset_sup4 : custom_support4
+support5 = custom_support5  // 预设不包含第5个支撑位
+
+// Resistance Levels (多个阻力位)
+group_resistance = "=== Resistance Levels (自定义模式生效) ==="
+custom_resistance1 = input.float(6070.0, "Resistance 1 (最近)", group=group_resistance)
+custom_resistance2 = input.float(6100.0, "Resistance 2", group=group_resistance)
+custom_resistance3 = input.float(6150.0, "Resistance 3", group=group_resistance)
+custom_resistance4 = input.float(6200.0, "Resistance 4", group=group_resistance)
+custom_resistance5 = input.float(0.0, "Resistance 5 (0=禁用)", group=group_resistance)
+
+// 最终使用的Resistance Levels
+resistance1 = use_date_preset ? preset_res1 : custom_resistance1
+resistance2 = use_date_preset ? preset_res2 : custom_resistance2
+resistance3 = use_date_preset ? preset_res3 : custom_resistance3
+resistance4 = use_date_preset ? preset_res4 : custom_resistance4
+resistance5 = custom_resistance5  // 预设不包含第5个阻力位
+
+// ============================================================
+// 策略预设选择 (基于回测最优结果)
+// ============================================================
+group_preset = "=== 策略预设 (推荐) ==="
+
+// 预设策略选择
+strategy_preset = input.string("G+做多 最优", "选择预设策略",
+     options=["自定义",
+              "G+做多 最优", "G+做多 稳健",
+              "G-做多 最优", "G-做多 稳健",
+              "G-做空 最优", "G-做空 稳健",
+              "G+做空 最优", "G+做空 稳健"],
+     group=group_preset,
+     tooltip="基于MFE/MAE回测结果的最优参数组合")
+
+// 显示当前预设的参数说明
+show_preset_info = input.bool(true, "显示预设参数详情", group=group_preset)
+
+// ============================================================
+// 预设参数配置 (基于分析结果)
+// ============================================================
+// G+做多 最优: lb=30, hz=15, th=0.1%, MR=70-100%, 距Support=medium, MFE/MAE>100
+// G+做多 稳健: lb=15, hz=30, th=0.1%, MR=<30%, 距Support=near, MFE/MAE=2.14
+// G-做多 最优: lb=30, hz=15, th=0.2%, MR=<30%, 距Support=near, MFE/MAE=10.5
+// G-做多 稳健: lb=15, hz=15, th=0.2%, MR=<30%, 距Support=near, MFE/MAE=8.8
+// G-做空 最优: lb=15, hz=30, th=0.2%, MR=70-100%, 距HW=near, MFE/MAE=12.3
+// G-做空 稳健: lb=10, hz=15, th=0.1%, MR=50-70%, 距HW=medium, MFE/MAE=7.0
+// G+做空 最优: lb=15, hz=15, th=0.2%, MR=30-50%, 距HW=medium, MFE/MAE=8.7
+// G+做空 稳健: lb=30, hz=15, th=0.2%, MR=50-70%, 距HW=medium, MFE/MAE=5.1
+
+// 根据预设设置参数 (使用switch语句避免多行ternary语法错误)
+preset_lb = switch strategy_preset
+    "G+做多 最优" => 30
+    "G+做多 稳健" => 15
+    "G-做多 最优" => 30
+    "G-做多 稳健" => 15
+    "G-做空 最优" => 15
+    "G-做空 稳健" => 10
+    "G+做空 最优" => 15
+    "G+做空 稳健" => 30
+    => 15
+
+preset_hz = switch strategy_preset
+    "G+做多 最优" => 15
+    "G+做多 稳健" => 30
+    "G-做多 最优" => 15
+    "G-做多 稳健" => 15
+    "G-做空 最优" => 30
+    "G-做空 稳健" => 15
+    "G+做空 最优" => 15
+    "G+做空 稳健" => 15
+    => 15
+
+preset_th = switch strategy_preset
+    "G+做多 最优" => 0.1
+    "G+做多 稳健" => 0.1
+    "G-做多 最优" => 0.2
+    "G-做多 稳健" => 0.2
+    "G-做空 最优" => 0.2
+    "G-做空 稳健" => 0.1
+    "G+做空 最优" => 0.2
+    "G+做空 稳健" => 0.2
+    => 0.1
+
+preset_mr_min = switch strategy_preset
+    "G+做多 最优" => 0.7
+    "G+做多 稳健" => 0.0
+    "G-做多 最优" => 0.0
+    "G-做多 稳健" => 0.0
+    "G-做空 最优" => 0.7
+    "G-做空 稳健" => 0.5
+    "G+做空 最优" => 0.3
+    "G+做空 稳健" => 0.5
+    => 0.0
+
+preset_mr_max = switch strategy_preset
+    "G+做多 最优" => 1.0
+    "G+做多 稳健" => 0.3
+    "G-做多 最优" => 0.3
+    "G-做多 稳健" => 0.3
+    "G-做空 最优" => 1.0
+    "G-做空 稳健" => 0.7
+    "G+做空 最优" => 0.5
+    "G+做空 稳健" => 0.7
+    => 2.0
+
+// 预设的距离类型: 1=near, 2=medium, 3=far
+preset_dist_type = switch strategy_preset
+    "G+做多 最优" => 2   // medium
+    "G+做多 稳健" => 1   // near
+    "G-做多 最优" => 1   // near
+    "G-做多 稳健" => 1   // near
+    "G-做空 最优" => 1   // near
+    "G-做空 稳健" => 2   // medium
+    "G+做空 最优" => 2   // medium
+    "G+做空 稳健" => 2   // medium
+    => 0
+
+// 预设的距离字段: 1=Support, 2=HedgeWall
+preset_dist_field = switch strategy_preset
+    "G+做多 最优" => 1   // Support
+    "G+做多 稳健" => 1   // Support
+    "G-做多 最优" => 1   // Support
+    "G-做多 稳健" => 1   // Support
+    "G-做空 最优" => 2   // HedgeWall
+    "G-做空 稳健" => 2   // HedgeWall
+    "G+做空 最优" => 2   // HedgeWall
+    "G+做空 稳健" => 2   // HedgeWall
+    => 0
+
+// ============================================================
+// 自定义参数 (当选择"自定义"时使用)
+// ============================================================
+group_custom = "=== 自定义参数 (仅当选择'自定义'时生效) ==="
+custom_lookback = input.int(15, "Lookback Period", minval=5, maxval=30, group=group_custom,
+     tooltip="回看周期: 5/10/15/30 bars")
+custom_threshold_pct = input.float(0.1, "Threshold %", minval=0.05, maxval=0.3, step=0.05, group=group_custom,
+     tooltip="触发阈值: 0.1%或0.2%效果较好")
+custom_horizon = input.int(15, "Holding Period (bars)", minval=5, maxval=30, group=group_custom,
+     tooltip="持仓周期: 15或30 bars")
+custom_min_mr = input.float(0.0, "最小 Move Ratio", minval=0.0, maxval=1.5, step=0.1, group=group_custom)
+custom_max_mr = input.float(2.0, "最大 Move Ratio", minval=0.0, maxval=3.0, step=0.1, group=group_custom)
+
+// 最终使用的参数
+use_custom = strategy_preset == "自定义"
+lookback = use_custom ? custom_lookback : preset_lb
+threshold_pct = use_custom ? custom_threshold_pct : preset_th
+horizon = use_custom ? custom_horizon : preset_hz
+min_move_ratio = use_custom ? custom_min_mr : preset_mr_min
+max_move_ratio = use_custom ? custom_max_mr : preset_mr_max
+
+// 根据预设自动启用对应信号类型
+is_gp_long_preset = strategy_preset == "G+做多 最优" or strategy_preset == "G+做多 稳健"
+is_gn_long_preset = strategy_preset == "G-做多 最优" or strategy_preset == "G-做多 稳健"
+is_gn_short_preset = strategy_preset == "G-做空 最优" or strategy_preset == "G-做空 稳健"
+is_gp_short_preset = strategy_preset == "G+做空 最优" or strategy_preset == "G+做空 稳健"
+
+// 风险管理 (基于46天MFE/MAE分析的推荐值)
+// MFE/MAE分析结果:
+//   G- 环境: MFE_P50=0.13%, MAE_P50=-0.10%, 推荐 TP=0.15%, SL=0.25%
+//   G+ 环境: MFE_P50=0.10-0.14%, MAE_P50=-0.05~-0.10%, 推荐 TP=0.15%, SL=0.20%
+//   通用推荐: TP=0.15%, SL=0.25%
+group_risk = "=== 风险管理 ==="
+use_stop_loss = input.bool(true, "使用止损", group=group_risk)
+stop_loss_pct = input.float(0.25, "止损 %", minval=0.1, maxval=1.0, step=0.05, group=group_risk,
+     tooltip="基于MAE分析: P75=-0.20%, P90=-0.35%, 推荐0.25%可覆盖75%正常波动")
+use_take_profit = input.bool(true, "使用止盈", group=group_risk)
+take_profit_pct = input.float(0.15, "止盈 %", minval=0.1, maxval=1.0, step=0.05, group=group_risk,
+     tooltip="基于MFE分析: P50=0.12-0.15%, 推荐0.15%可在50%信号达到")
+use_time_exit = input.bool(true, "使用时间止损", group=group_risk)
+
+// V3 标准化动量阈值 (基于实际数据分析: G-波动是G+的2.0倍)
+group_v3 = "=== V3 标准化参数 ==="
+use_normalized_threshold = input.bool(true, "使用标准化动量阈值", group=group_v3,
+     tooltip="G+ 和 G- 使用不同的动量阈值，基于实际波动比 2.0x")
+momentum_th_g_plus = input.float(0.13, "G+ 动量阈值 %", minval=0.05, maxval=0.3, step=0.01, group=group_v3,
+     tooltip="基于数据分析: G+ 波动较小，0.13% 对应 ~15% 触发率")
+momentum_th_g_minus = input.float(0.26, "G- 动量阈值 %", minval=0.05, maxval=0.5, step=0.01, group=group_v3,
+     tooltip="基于数据分析: G- 波动是 G+ 的 2.0x，0.26% 对应 ~15% 触发率")
+signal_level = input.string("宽松", "信号级别",
+     options=["宽松", "中等", "严格"],
+     group=group_v3,
+     tooltip="宽松(推荐): Gamma+动量; 中等: +MR>=50%; 严格: +MR>=70%+距离。MR作为质量指标而非必要条件")
+
+// 信号选择 (仅自定义模式生效)
+group_signals = "=== 信号选择 (仅自定义模式) ==="
+custom_enable_gp_long = input.bool(true, "启用 G+ 做多", group=group_signals)
+custom_enable_gn_long = input.bool(true, "启用 G- 做多", group=group_signals)
+custom_enable_gn_short = input.bool(true, "启用 G- 做空", group=group_signals)
+custom_enable_gp_short = input.bool(true, "启用 G+ 做空", group=group_signals)
+
+// 最终启用状态: 预设模式只启用对应信号，自定义模式使用开关
+enable_gp_long = use_custom ? custom_enable_gp_long : is_gp_long_preset
+enable_gn_long = use_custom ? custom_enable_gn_long : is_gn_long_preset
+enable_gn_short = use_custom ? custom_enable_gn_short : is_gn_short_preset
+enable_gp_short = use_custom ? custom_enable_gp_short : is_gp_short_preset
+
+// 信号强度过滤
+group_quality = "=== 信号质量 ==="
+min_mfe_mae = input.float(2.0, "最小 MFE/MAE 比率", minval=1.0, maxval=10.0, step=0.5, group=group_quality)
+only_high_quality = input.bool(true, "仅高质量信号", group=group_quality)
+filter_move_ratio = input.bool(true, "启用Move Ratio过滤", group=group_quality,
+     tooltip="启用后将根据下方设置的MR范围过滤信号。高MR(>70%)信号质量更好")
+mr_filter_min = input.float(0.5, "MR过滤最小值", minval=0.0, maxval=2.0, step=0.1, group=group_quality,
+     tooltip="Move Ratio下限。推荐0.5(50%)以上为可选交易，0.7(70%)以上为推荐交易")
+mr_filter_max = input.float(2.0, "MR过滤最大值", minval=0.5, maxval=5.0, step=0.1, group=group_quality,
+     tooltip="Move Ratio上限，通常设置较高以不限制上限")
+
+// ============================================================
+// 核心计算
+// ============================================================
+
+// daily_open 已在上方 Key Levels 部分定义
+
+// Gamma环境判断
+is_gamma_positive = close > hedge_wall
+is_gamma_negative = close < hedge_wall
+
+// Zone判断
+is_above_implied = close > implied_high
+is_below_implied = close < implied_low
+is_in_range = close >= implied_low and close <= implied_high
+
+// Move Ratio计算
+price_change = close - daily_open
+move_ratio_long = implied_high != daily_open ? math.abs(price_change) / math.abs(implied_high - daily_open) : 0
+move_ratio_short = implied_low != daily_open ? math.abs(price_change) / math.abs(daily_open - implied_low) : 0
+move_ratio = price_change >= 0 ? move_ratio_long : move_ratio_short
+
+// 找到最近的Support (价格下方)
+nearest_support = close > support1 and support1 > 0 ? support1 :
+                  close > support2 and support2 > 0 ? support2 :
+                  close > support3 and support3 > 0 ? support3 :
+                  close > support4 and support4 > 0 ? support4 :
+                  close > support5 and support5 > 0 ? support5 : support1
+
+// 找到最近的Resistance (价格上方)
+nearest_resistance = close < resistance1 and resistance1 > 0 ? resistance1 :
+                     close < resistance2 and resistance2 > 0 ? resistance2 :
+                     close < resistance3 and resistance3 > 0 ? resistance3 :
+                     close < resistance4 and resistance4 > 0 ? resistance4 :
+                     close < resistance5 and resistance5 > 0 ? resistance5 : resistance1
+
+// 距离计算
+dist_to_support = (close - nearest_support) / close
+dist_to_resistance = (nearest_resistance - close) / close
+dist_to_hedge_wall = (close - hedge_wall) / close
+
+// 距离分类
+// near: <0.3%, medium: 0.3-0.7%, far: >0.7%
+dist_support_near = math.abs(dist_to_support) < 0.003
+dist_support_medium = math.abs(dist_to_support) >= 0.003 and math.abs(dist_to_support) < 0.007
+dist_support_far = math.abs(dist_to_support) >= 0.007
+
+dist_resistance_near = math.abs(dist_to_resistance) < 0.003
+dist_resistance_medium = math.abs(dist_to_resistance) >= 0.003 and math.abs(dist_to_resistance) < 0.007
+dist_resistance_far = math.abs(dist_to_resistance) >= 0.007
+
+dist_hw_near = math.abs(dist_to_hedge_wall) < 0.003
+dist_hw_medium = math.abs(dist_to_hedge_wall) >= 0.003 and math.abs(dist_to_hedge_wall) < 0.007
+dist_hw_far = math.abs(dist_to_hedge_wall) >= 0.007
+
+// Move Ratio分类
+mr_low = move_ratio < 0.3
+mr_medium_low = move_ratio >= 0.3 and move_ratio < 0.5
+mr_medium_high = move_ratio >= 0.5 and move_ratio < 0.7
+mr_high = move_ratio >= 0.7 and move_ratio <= 1.0
+mr_extended = move_ratio > 1.0
+
+// V3 中等级别: MR >= 50%
+mr_medium_plus = move_ratio >= 0.5
+
+// 价格动量 - V3 标准化版本
+price_change_lb = (close - close[lookback]) / close[lookback]
+
+// 根据 Gamma 环境选择阈值
+threshold_current = use_normalized_threshold ?
+     (is_gamma_positive ? momentum_th_g_plus / 100 : momentum_th_g_minus / 100) :
+     threshold_pct / 100
+
+after_rise = price_change_lb > threshold_current
+after_drop = price_change_lb < -threshold_current
+
+// ============================================================
+// 信号生成
+// ============================================================
+
+// === V3 三级信号系统 ===
+// 宽松: Gamma + 动量方向
+// 中等: Gamma + 动量 + MR>=50%
+// 严格: Gamma + 动量 + MR>=70% + 距离条件
+
+// === G+ 做多 (均值回归: 跌后做多) ===
+gp_long_loose = is_gamma_positive and after_drop
+gp_long_medium = gp_long_loose and mr_medium_plus
+gp_long_strict = gp_long_loose and mr_high and (dist_support_medium or dist_support_far)
+
+signal_gp_long = switch signal_level
+    "宽松" => gp_long_loose
+    "中等" => gp_long_medium
+    "严格" => gp_long_strict
+    => gp_long_loose
+
+// === G+ 做空 (均值回归: 涨后做空) ===
+gp_short_loose = is_gamma_positive and after_rise
+gp_short_medium = gp_short_loose and mr_medium_plus
+gp_short_strict = gp_short_loose and mr_high and (dist_resistance_medium or dist_resistance_far)
+
+signal_gp_short = switch signal_level
+    "宽松" => gp_short_loose
+    "中等" => gp_short_medium
+    "严格" => gp_short_strict
+    => gp_short_loose
+
+// === G- 做多 (趋势延续: 涨后做多) ===
+gn_long_loose = is_gamma_negative and after_rise
+gn_long_medium = gn_long_loose and mr_medium_plus
+gn_long_strict = gn_long_loose and mr_high and dist_hw_near
+
+signal_gn_long = switch signal_level
+    "宽松" => gn_long_loose
+    "中等" => gn_long_medium
+    "严格" => gn_long_strict
+    => gn_long_loose
+
+// === G- 做空 (趋势延续: 跌后做空) ===
+gn_short_loose = is_gamma_negative and after_drop
+gn_short_medium = gn_short_loose and mr_medium_plus
+gn_short_strict = gn_short_loose and mr_high and dist_hw_near
+
+signal_gn_short = switch signal_level
+    "宽松" => gn_short_loose
+    "中等" => gn_short_medium
+    "严格" => gn_short_strict
+    => gn_short_loose
+
+// Move Ratio 过滤 (使用信号质量组的设置)
+mr_filter_pass = not filter_move_ratio or (move_ratio >= mr_filter_min and move_ratio <= mr_filter_max)
+
+// 应用启用过滤和Move Ratio过滤
+final_gp_long = enable_gp_long and signal_gp_long and mr_filter_pass
+final_gn_long = enable_gn_long and signal_gn_long and mr_filter_pass
+final_gn_short = enable_gn_short and signal_gn_short and mr_filter_pass
+final_gp_short = enable_gp_short and signal_gp_short and mr_filter_pass
+
+// ============================================================
+// 仓位跟踪
+// ============================================================
+var int entry_bar = 0
+var float entry_price = 0.0
+var string entry_type = ""
+
+// ============================================================
+// 入场逻辑
+// ============================================================
+
+// 做多入场
+long_condition = (final_gp_long or final_gn_long) and strategy.position_size == 0
+if long_condition
+    entry_bar := bar_index
+    entry_price := close
+    entry_type := final_gp_long ? "G+L" : "G-L"
+    strategy.entry("Long", strategy.long)
+
+// 做空入场
+short_condition = (final_gn_short or final_gp_short) and strategy.position_size == 0
+if short_condition
+    entry_bar := bar_index
+    entry_price := close
+    entry_type := final_gn_short ? "G-S" : "G+S"
+    strategy.entry("Short", strategy.short)
+
+// ============================================================
+// 出场逻辑
+// ============================================================
+
+// 止损止盈计算
+sl_price_long = entry_price * (1 - stop_loss_pct / 100)
+tp_price_long = entry_price * (1 + take_profit_pct / 100)
+sl_price_short = entry_price * (1 + stop_loss_pct / 100)
+tp_price_short = entry_price * (1 - take_profit_pct / 100)
+
+// 时间止损
+bars_in_trade = bar_index - entry_bar
+time_exit = use_time_exit and bars_in_trade >= horizon
+
+// 多头出场
+if strategy.position_size > 0
+    if use_stop_loss and close <= sl_price_long
+        strategy.close("Long", comment="SL")
+    else if use_take_profit and close >= tp_price_long
+        strategy.close("Long", comment="TP")
+    else if time_exit
+        strategy.close("Long", comment="Time")
+
+// 空头出场
+if strategy.position_size < 0
+    if use_stop_loss and close >= sl_price_short
+        strategy.close("Short", comment="SL")
+    else if use_take_profit and close <= tp_price_short
+        strategy.close("Short", comment="TP")
+    else if time_exit
+        strategy.close("Short", comment="Time")
+
+// ============================================================
+// 可视化
+// ============================================================
+
+// Key Levels
+plot(hedge_wall, "Hedge Wall", color=color.new(color.orange, 0), linewidth=2)
+
+// Support Levels
+plot(support1 > 0 ? support1 : na, "Support 1", color=color.new(color.green, 0), linewidth=2)
+plot(support2 > 0 ? support2 : na, "Support 2", color=color.new(color.green, 30), linewidth=1)
+plot(support3 > 0 ? support3 : na, "Support 3", color=color.new(color.green, 50), linewidth=1)
+plot(support4 > 0 ? support4 : na, "Support 4", color=color.new(color.green, 70), linewidth=1)
+plot(support5 > 0 ? support5 : na, "Support 5", color=color.new(color.green, 80), linewidth=1)
+
+// Resistance Levels
+plot(resistance1 > 0 ? resistance1 : na, "Resistance 1", color=color.new(color.red, 0), linewidth=2)
+plot(resistance2 > 0 ? resistance2 : na, "Resistance 2", color=color.new(color.red, 30), linewidth=1)
+plot(resistance3 > 0 ? resistance3 : na, "Resistance 3", color=color.new(color.red, 50), linewidth=1)
+plot(resistance4 > 0 ? resistance4 : na, "Resistance 4", color=color.new(color.red, 70), linewidth=1)
+plot(resistance5 > 0 ? resistance5 : na, "Resistance 5", color=color.new(color.red, 80), linewidth=1)
+
+// Gamma背景
+bgcolor(is_gamma_positive ? color.new(color.green, 95) : color.new(color.red, 95))
+
+// 入场信号
+plotshape(long_condition, title="Long Entry", location=location.belowbar,
+     style=shape.triangleup, size=size.small, color=color.green, text="L")
+plotshape(short_condition, title="Short Entry", location=location.abovebar,
+     style=shape.triangledown, size=size.small, color=color.red, text="S")
+
+// ============================================================
+// 信息表格
+// ============================================================
+var table stats = table.new(position.bottom_right, 2, 16, bgcolor=color.new(color.black, 80))
+
+if barstate.islast
+    // 日期预设
+    table.cell(stats, 0, 0, "日期预设", text_color=color.white)
+    table.cell(stats, 1, 0, date_preset, text_color=color.lime)
+
+    // Key Levels概览
+    table.cell(stats, 0, 1, "HW/IH/IL", text_color=color.white)
+    table.cell(stats, 1, 1, str.tostring(hedge_wall, "#") + "/" + str.tostring(implied_high, "#") + "/" + str.tostring(implied_low, "#"), text_color=color.orange)
+
+    // V3 信号级别
+    table.cell(stats, 0, 2, "V3 信号级别", text_color=color.white)
+    table.cell(stats, 1, 2, signal_level, text_color=color.aqua)
+
+    // V3 动量阈值
+    th_str = use_normalized_threshold ?
+         "G+:" + str.tostring(momentum_th_g_plus, "#.##") + "% G-:" + str.tostring(momentum_th_g_minus, "#.##") + "%" :
+         str.tostring(threshold_pct, "#.##") + "%"
+    table.cell(stats, 0, 3, "动量阈值", text_color=color.white)
+    table.cell(stats, 1, 3, th_str, text_color=color.yellow)
+
+    // 当前参数
+    param_str = "lb=" + str.tostring(lookback) + " hz=" + str.tostring(horizon)
+    table.cell(stats, 0, 4, "参数", text_color=color.white)
+    table.cell(stats, 1, 4, param_str, text_color=color.yellow)
+
+    // MR范围
+    mr_range_str = str.tostring(min_move_ratio * 100, "#") + "-" + str.tostring(max_move_ratio * 100, "#") + "%"
+    table.cell(stats, 0, 5, "MR范围", text_color=color.white)
+    table.cell(stats, 1, 5, mr_range_str, text_color=color.yellow)
+
+    table.cell(stats, 0, 6, "净利润", text_color=color.white)
+    table.cell(stats, 1, 6, str.tostring(strategy.netprofit, "#.##"),
+         text_color=strategy.netprofit >= 0 ? color.green : color.red)
+
+    table.cell(stats, 0, 7, "胜率", text_color=color.white)
+    win_rate = strategy.wintrades / math.max(strategy.closedtrades, 1) * 100
+    table.cell(stats, 1, 7, str.tostring(win_rate, "#.#") + "%", text_color=color.yellow)
+
+    table.cell(stats, 0, 8, "总交易", text_color=color.white)
+    table.cell(stats, 1, 8, str.tostring(strategy.closedtrades), text_color=color.white)
+
+    table.cell(stats, 0, 9, "盈利因子", text_color=color.white)
+    pf = strategy.grossloss != 0 ? strategy.grossprofit / math.abs(strategy.grossloss) : 0
+    table.cell(stats, 1, 9, str.tostring(pf, "#.##"), text_color=pf >= 1 ? color.green : color.red)
+
+    table.cell(stats, 0, 10, "最大回撤", text_color=color.white)
+    table.cell(stats, 1, 10, str.tostring(strategy.max_drawdown, "#.##"), text_color=color.orange)
+
+    table.cell(stats, 0, 11, "当前仓位", text_color=color.white)
+    pos_str = strategy.position_size > 0 ? "做多" : strategy.position_size < 0 ? "做空" : "空仓"
+    table.cell(stats, 1, 11, pos_str, text_color=strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray)
+
+    table.cell(stats, 0, 12, "Gamma", text_color=color.white)
+    table.cell(stats, 1, 12, is_gamma_positive ? "G+" : "G-",
+         text_color=is_gamma_positive ? color.green : color.red)
+
+    table.cell(stats, 0, 13, "Move Ratio", text_color=color.white)
+    mr_level_str = mr_medium_plus ? ">=50%" : "<50%"
+    table.cell(stats, 1, 13, str.tostring(move_ratio * 100, "#.#") + "% (" + mr_level_str + ")", text_color=color.aqua)
+
+    // 距离信息
+    dist_sup_str = dist_support_near ? "Near" : dist_support_medium ? "Medium" : "Far"
+    dist_hw_str = dist_hw_near ? "Near" : dist_hw_medium ? "Medium" : "Far"
+    table.cell(stats, 0, 14, "距离", text_color=color.white)
+    table.cell(stats, 1, 14, "Sup:" + dist_sup_str + " HW:" + dist_hw_str, text_color=color.gray)
+
+    // 当前动量
+    table.cell(stats, 0, 15, "动量", text_color=color.white)
+    momentum_str = after_drop ? "下跌" : after_rise ? "上涨" : "平稳"
+    table.cell(stats, 1, 15, momentum_str + " (" + str.tostring(price_change_lb * 100, "#.##") + "%)",
+         text_color=after_drop ? color.red : after_rise ? color.green : color.gray)

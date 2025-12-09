@@ -1,0 +1,759 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Gamma Strategy V4 - 基于数据分析优化
+// 核心改进: 移除MR必要条件，使用标准化动量阈值，包含47天预设数据
+
+//@version=5
+indicator("Gamma Strategy V4", overlay=true, max_labels_count=500)
+
+// ============================================================
+// 日期预设选择 - 47天完整数据
+// ============================================================
+group_date = "=== 日期预设 (快速切换) ==="
+date_preset = input.string("2025-12-08", "选择日期",
+     options=["自定义",
+              "2025-12-08", "2025-12-05", "2025-12-04", "2025-12-03", "2025-12-02",
+              "2025-12-01", "2025-11-28", "2025-11-26", "2025-11-25", "2025-11-24",
+              "2025-11-21", "2025-11-20", "2025-11-19", "2025-11-18", "2025-11-17",
+              "2025-11-14", "2025-11-13", "2025-11-12", "2025-11-11", "2025-11-10",
+              "2025-11-07", "2025-11-06", "2025-11-05", "2025-11-04", "2025-11-03",
+              "2025-10-31", "2025-10-30", "2025-10-29", "2025-10-28", "2025-10-27",
+              "2025-10-24", "2025-10-23", "2025-10-22", "2025-10-21", "2025-10-20",
+              "2025-10-17", "2025-10-16", "2025-10-15", "2025-10-14", "2025-10-13",
+              "2025-10-10", "2025-10-09", "2025-10-08", "2025-10-07", "2025-10-06",
+              "2025-10-03", "2025-10-02"],
+     group=group_date,
+     tooltip="选择预设日期自动填充Key Levels，或选择'自定义'手动输入")
+
+use_preset = date_preset != "自定义"
+
+// ============================================================
+// 预设数据 - Hedge Wall
+// ============================================================
+preset_hw = switch date_preset
+    "2025-12-08" => 6860.0
+    "2025-12-05" => 6795.0
+    "2025-12-04" => 6795.0
+    "2025-12-03" => 6795.0
+    "2025-12-02" => 6785.0
+    "2025-12-01" => 6815.0
+    "2025-11-28" => 6785.0
+    "2025-11-26" => 6730.0
+    "2025-11-25" => 6680.0
+    "2025-11-24" => 6670.0
+    "2025-11-21" => 6710.0
+    "2025-11-20" => 6710.0
+    "2025-11-19" => 6715.0
+    "2025-11-18" => 6730.0
+    "2025-11-17" => 6770.0
+    "2025-11-14" => 6780.0
+    "2025-11-13" => 6845.0
+    "2025-11-12" => 6795.0
+    "2025-11-11" => 6795.0
+    "2025-11-10" => 6730.0
+    "2025-11-07" => 6770.0
+    "2025-11-06" => 6815.0
+    "2025-11-05" => 6795.0
+    "2025-11-04" => 6845.0
+    "2025-11-03" => 6820.0
+    "2025-10-31" => 6825.0
+    "2025-10-30" => 6845.0
+    "2025-10-29" => 6745.0
+    "2025-10-28" => 6845.0
+    "2025-10-27" => 6745.0
+    "2025-10-24" => 6720.0
+    "2025-10-23" => 6690.0
+    "2025-10-22" => 6730.0
+    "2025-10-21" => 6715.0
+    "2025-10-20" => 6680.0
+    "2025-10-17" => 6640.0
+    "2025-10-16" => 6680.0
+    "2025-10-15" => 6660.0
+    "2025-10-14" => 6670.0
+    "2025-10-13" => 6680.0
+    "2025-10-10" => 6725.0
+    "2025-10-09" => 6725.0
+    "2025-10-08" => 6720.0
+    "2025-10-07" => 6695.0
+    "2025-10-06" => 6695.0
+    "2025-10-03" => 6695.0
+    "2025-10-02" => 6680.0
+    => 6860.0
+
+// ============================================================
+// 预设数据 - Implied High
+// ============================================================
+preset_ih = switch date_preset
+    "2025-12-08" => 6915.76
+    "2025-12-05" => 6907.35
+    "2025-12-04" => 6909.49
+    "2025-12-03" => 6860.72
+    "2025-12-02" => 6874.61
+    "2025-12-01" => 6844.88
+    "2025-11-28" => 6866.85
+    "2025-11-26" => 6836.22
+    "2025-11-25" => 6744.27
+    "2025-11-24" => 6684.92
+    "2025-11-21" => 6605.86
+    "2025-11-20" => 6787.24
+    "2025-11-19" => 6664.47
+    "2025-11-18" => 6679.69
+    "2025-11-17" => 6756.48
+    "2025-11-14" => 6713.52
+    "2025-11-13" => 6862.65
+    "2025-11-12" => 6912.79
+    "2025-11-11" => 0.0
+    "2025-11-10" => 6832.83
+    "2025-11-07" => 6741.29
+    "2025-11-06" => 6828.98
+    "2025-11-05" => 6813.81
+    "2025-11-04" => 6826.23
+    "2025-11-03" => 6922.19
+    "2025-10-31" => 6915.33
+    "2025-10-30" => 6905.48
+    "2025-10-29" => 6950.03
+    "2025-10-28" => 6936.21
+    "2025-10-27" => 6893.89
+    "2025-10-24" => 6830.66
+    "2025-10-23" => 6745.35
+    "2025-10-22" => 6785.35
+    "2025-10-21" => 6781.77
+    "2025-10-20" => 6737.06
+    "2025-10-17" => 0.0
+    "2025-10-16" => 6732.74
+    "2025-10-15" => 6735.65
+    "2025-10-14" => 6735.65
+    "2025-10-13" => 6671.00
+    "2025-10-10" => 6781.21
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6767.93
+    "2025-10-07" => 0.0
+    "2025-10-06" => 6782.44
+    "2025-10-03" => 6764.71
+    "2025-10-02" => 0.0
+    => 6915.76
+
+// ============================================================
+// 预设数据 - Implied Low
+// ============================================================
+preset_il = switch date_preset
+    "2025-12-08" => 6834.64
+    "2025-12-05" => 6824.95
+    "2025-12-04" => 6821.61
+    "2025-12-03" => 6776.18
+    "2025-12-02" => 6789.89
+    "2025-12-01" => 6757.82
+    "2025-11-28" => 6775.45
+    "2025-11-26" => 6743.88
+    "2025-11-25" => 6655.83
+    "2025-11-24" => 6598.58
+    "2025-11-21" => 6521.84
+    "2025-11-20" => 6702.26
+    "2025-11-19" => 6581.03
+    "2025-11-18" => 6593.41
+    "2025-11-17" => 6669.22
+    "2025-11-14" => 6630.78
+    "2025-11-13" => 6784.85
+    "2025-11-12" => 6823.51
+    "2025-11-11" => 0.0
+    "2025-11-10" => 6747.27
+    "2025-11-07" => 6654.21
+    "2025-11-06" => 6742.12
+    "2025-11-05" => 6728.49
+    "2025-11-04" => 6738.07
+    "2025-11-03" => 6835.51
+    "2025-10-31" => 6827.37
+    "2025-10-30" => 6819.02
+    "2025-10-29" => 6869.87
+    "2025-10-28" => 6847.99
+    "2025-10-27" => 6806.21
+    "2025-10-24" => 6742.44
+    "2025-10-23" => 6659.55
+    "2025-10-22" => 6699.05
+    "2025-10-21" => 6692.83
+    "2025-10-20" => 6654.04
+    "2025-10-17" => 0.0
+    "2025-10-16" => 6649.76
+    "2025-10-15" => 6648.65
+    "2025-10-14" => 6648.65
+    "2025-10-13" => 6590.10
+    "2025-10-10" => 6705.69
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6685.87
+    "2025-10-07" => 0.0
+    "2025-10-06" => 6698.86
+    "2025-10-03" => 6682.69
+    "2025-10-02" => 0.0
+    => 6834.64
+
+// ============================================================
+// 预设数据 - Implied Move (用于计算缺失的IH/IL)
+// ============================================================
+preset_im = switch date_preset
+    "2025-12-08" => 0.0059
+    "2025-12-05" => 0.0060
+    "2025-12-04" => 0.0064
+    "2025-12-03" => 0.0062
+    "2025-12-02" => 0.0062
+    "2025-12-01" => 0.0064
+    "2025-11-28" => 0.0067
+    "2025-11-26" => 0.0068
+    "2025-11-25" => 0.0066
+    "2025-11-24" => 0.0065
+    "2025-11-21" => 0.0064
+    "2025-11-20" => 0.0063
+    "2025-11-19" => 0.0063
+    "2025-11-18" => 0.0065
+    "2025-11-17" => 0.0065
+    "2025-11-14" => 0.0062
+    "2025-11-13" => 0.0057
+    "2025-11-12" => 0.0065
+    "2025-11-11" => 0.0063
+    "2025-11-10" => 0.0063
+    "2025-11-07" => 0.0065
+    "2025-11-06" => 0.0064
+    "2025-11-05" => 0.0064
+    "2025-11-04" => 0.0065
+    "2025-11-03" => 0.0063
+    "2025-10-31" => 0.0064
+    "2025-10-30" => 0.0063
+    "2025-10-29" => 0.0058
+    "2025-10-28" => 0.0064
+    "2025-10-27" => 0.0064
+    "2025-10-24" => 0.0065
+    "2025-10-23" => 0.0064
+    "2025-10-22" => 0.0064
+    "2025-10-21" => 0.0066
+    "2025-10-20" => 0.0062
+    "2025-10-17" => 0.0065
+    "2025-10-16" => 0.0062
+    "2025-10-15" => 0.0065
+    "2025-10-14" => 0.0064
+    "2025-10-13" => 0.0061
+    "2025-10-10" => 0.0056
+    "2025-10-09" => 0.0063
+    "2025-10-08" => 0.0061
+    "2025-10-07" => 0.0060
+    "2025-10-06" => 0.0062
+    "2025-10-03" => 0.0061
+    "2025-10-02" => 0.0061
+    => 0.0059
+
+// ============================================================
+// 预设数据 - Support 1
+// ============================================================
+preset_sup1 = switch date_preset
+    "2025-12-08" => 6850.0
+    "2025-12-05" => 6850.0
+    "2025-12-04" => 6800.0
+    "2025-12-03" => 6800.0
+    "2025-12-02" => 6800.0
+    "2025-12-01" => 6775.0
+    "2025-11-28" => 6800.0
+    "2025-11-26" => 6775.0
+    "2025-11-25" => 6600.0
+    "2025-11-24" => 6600.0
+    "2025-11-21" => 6500.0
+    "2025-11-20" => 6700.0
+    "2025-11-19" => 6600.0
+    "2025-11-18" => 6600.0
+    "2025-11-17" => 6700.0
+    "2025-11-14" => 6600.0
+    "2025-11-13" => 6700.0
+    "2025-11-12" => 6700.0
+    "2025-11-11" => 6700.0
+    "2025-11-10" => 6700.0
+    "2025-11-07" => 6700.0
+    "2025-11-06" => 6700.0
+    "2025-11-05" => 6700.0
+    "2025-11-04" => 6800.0
+    "2025-11-03" => 6800.0
+    "2025-10-31" => 6800.0
+    "2025-10-30" => 6850.0
+    "2025-10-29" => 6850.0
+    "2025-10-28" => 6840.0
+    "2025-10-27" => 6825.0
+    "2025-10-24" => 6700.0
+    "2025-10-23" => 6700.0
+    "2025-10-22" => 6735.0
+    "2025-10-21" => 6700.0
+    "2025-10-20" => 6600.0
+    "2025-10-17" => 6600.0
+    "2025-10-16" => 6600.0
+    "2025-10-15" => 6600.0
+    "2025-10-14" => 6600.0
+    "2025-10-13" => 6600.0
+    "2025-10-10" => 6700.0
+    "2025-10-09" => 6750.0
+    "2025-10-08" => 6700.0
+    "2025-10-07" => 6700.0
+    "2025-10-06" => 6700.0
+    "2025-10-03" => 6700.0
+    "2025-10-02" => 6700.0
+    => 6850.0
+
+// ============================================================
+// 预设数据 - Support 2
+// ============================================================
+preset_sup2 = switch date_preset
+    "2025-12-08" => 6820.0
+    "2025-12-05" => 6820.0
+    "2025-12-04" => 6775.0
+    "2025-12-03" => 6775.0
+    "2025-12-02" => 6775.0
+    "2025-12-01" => 6700.0
+    "2025-11-28" => 6780.0
+    "2025-11-26" => 6750.0
+    "2025-11-25" => 6500.0
+    "2025-11-24" => 6500.0
+    "2025-11-21" => 6350.0
+    "2025-11-20" => 6600.0
+    "2025-11-19" => 6500.0
+    "2025-11-18" => 6500.0
+    "2025-11-17" => 6600.0
+    "2025-11-14" => 6500.0
+    "2025-11-13" => 0.0
+    "2025-11-12" => 0.0
+    "2025-11-11" => 6600.0
+    "2025-11-10" => 6600.0
+    "2025-11-07" => 6600.0
+    "2025-11-06" => 6600.0
+    "2025-11-05" => 6600.0
+    "2025-11-04" => 6700.0
+    "2025-11-03" => 6700.0
+    "2025-10-31" => 6700.0
+    "2025-10-30" => 6800.0
+    "2025-10-29" => 6800.0
+    "2025-10-28" => 6800.0
+    "2025-10-27" => 6800.0
+    "2025-10-24" => 6600.0
+    "2025-10-23" => 6650.0
+    "2025-10-22" => 6700.0
+    "2025-10-21" => 6650.0
+    "2025-10-20" => 6500.0
+    "2025-10-17" => 6500.0
+    "2025-10-16" => 6500.0
+    "2025-10-15" => 6500.0
+    "2025-10-14" => 6500.0
+    "2025-10-13" => 6575.0
+    "2025-10-10" => 6650.0
+    "2025-10-09" => 6720.0
+    "2025-10-08" => 6670.0
+    "2025-10-07" => 6680.0
+    "2025-10-06" => 6680.0
+    "2025-10-03" => 6680.0
+    "2025-10-02" => 6680.0
+    => 6820.0
+
+// ============================================================
+// 预设数据 - Resistance 1
+// ============================================================
+preset_res1 = switch date_preset
+    "2025-12-08" => 6900.0
+    "2025-12-05" => 6900.0
+    "2025-12-04" => 6900.0
+    "2025-12-03" => 6900.0
+    "2025-12-02" => 6850.0
+    "2025-12-01" => 6810.0
+    "2025-11-28" => 6900.0
+    "2025-11-26" => 6800.0
+    "2025-11-25" => 6700.0
+    "2025-11-24" => 6700.0
+    "2025-11-21" => 6600.0
+    "2025-11-20" => 6800.0
+    "2025-11-19" => 6700.0
+    "2025-11-18" => 6700.0
+    "2025-11-17" => 6800.0
+    "2025-11-14" => 6700.0
+    "2025-11-13" => 6900.0
+    "2025-11-12" => 6900.0
+    "2025-11-11" => 6850.0
+    "2025-11-10" => 6800.0
+    "2025-11-07" => 6800.0
+    "2025-11-06" => 6800.0
+    "2025-11-05" => 6800.0
+    "2025-11-04" => 6900.0
+    "2025-11-03" => 6900.0
+    "2025-10-31" => 6900.0
+    "2025-10-30" => 6950.0
+    "2025-10-29" => 6915.0
+    "2025-10-28" => 6895.0
+    "2025-10-27" => 6875.0
+    "2025-10-24" => 6825.0
+    "2025-10-23" => 6750.0
+    "2025-10-22" => 6800.0
+    "2025-10-21" => 6800.0
+    "2025-10-20" => 6700.0
+    "2025-10-17" => 6700.0
+    "2025-10-16" => 6700.0
+    "2025-10-15" => 6700.0
+    "2025-10-14" => 6700.0
+    "2025-10-13" => 6700.0
+    "2025-10-10" => 6750.0
+    "2025-10-09" => 6770.0
+    "2025-10-08" => 6730.0
+    "2025-10-07" => 6750.0
+    "2025-10-06" => 6750.0
+    "2025-10-03" => 6750.0
+    "2025-10-02" => 6750.0
+    => 6900.0
+
+// ============================================================
+// 预设数据 - Resistance 2
+// ============================================================
+preset_res2 = switch date_preset
+    "2025-12-08" => 6925.0
+    "2025-12-05" => 0.0
+    "2025-12-04" => 0.0
+    "2025-12-03" => 6850.0
+    "2025-12-02" => 6900.0
+    "2025-12-01" => 6850.0
+    "2025-11-28" => 6850.0
+    "2025-11-26" => 6825.0
+    "2025-11-25" => 6750.0
+    "2025-11-24" => 6750.0
+    "2025-11-21" => 6700.0
+    "2025-11-20" => 0.0
+    "2025-11-19" => 6800.0
+    "2025-11-18" => 6800.0
+    "2025-11-17" => 0.0
+    "2025-11-14" => 0.0
+    "2025-11-13" => 7000.0
+    "2025-11-12" => 6920.0
+    "2025-11-11" => 6900.0
+    "2025-11-10" => 6850.0
+    "2025-11-07" => 6900.0
+    "2025-11-06" => 6900.0
+    "2025-11-05" => 6900.0
+    "2025-11-04" => 7000.0
+    "2025-11-03" => 6950.0
+    "2025-10-31" => 6950.0
+    "2025-10-30" => 7000.0
+    "2025-10-29" => 7000.0
+    "2025-10-28" => 0.0
+    "2025-10-27" => 0.0
+    "2025-10-24" => 6800.0
+    "2025-10-23" => 6800.0
+    "2025-10-22" => 0.0
+    "2025-10-21" => 0.0
+    "2025-10-20" => 0.0
+    "2025-10-17" => 0.0
+    "2025-10-16" => 0.0
+    "2025-10-15" => 0.0
+    "2025-10-14" => 0.0
+    "2025-10-13" => 0.0
+    "2025-10-10" => 6775.0
+    "2025-10-09" => 0.0
+    "2025-10-08" => 6750.0
+    "2025-10-07" => 6765.0
+    "2025-10-06" => 6765.0
+    "2025-10-03" => 6765.0
+    "2025-10-02" => 6765.0
+    => 6925.0
+
+// ============================================================
+// 自定义输入 (当选择"自定义"时生效)
+// ============================================================
+group_custom = "=== 自定义 Key Levels ==="
+custom_hw = input.float(6860.0, "Hedge Wall", group=group_custom)
+custom_ih = input.float(6915.76, "Implied High", group=group_custom)
+custom_il = input.float(6834.64, "Implied Low", group=group_custom)
+custom_sup1 = input.float(6850.0, "Support 1", group=group_custom)
+custom_sup2 = input.float(6820.0, "Support 2", group=group_custom)
+custom_res1 = input.float(6900.0, "Resistance 1", group=group_custom)
+custom_res2 = input.float(6925.0, "Resistance 2", group=group_custom)
+
+// ============================================================
+// 最终使用的 Key Levels
+// ============================================================
+hedge_wall = use_preset ? preset_hw : custom_hw
+support1 = use_preset ? preset_sup1 : custom_sup1
+support2 = use_preset ? preset_sup2 : custom_sup2
+resistance1 = use_preset ? preset_res1 : custom_res1
+resistance2 = use_preset ? preset_res2 : custom_res2
+
+// Implied High/Low - 处理缺失值 (用 IM 计算)
+daily_open = request.security(syminfo.tickerid, "D", open)
+raw_ih = use_preset ? preset_ih : custom_ih
+raw_il = use_preset ? preset_il : custom_il
+im = use_preset ? preset_im : 0.006
+
+implied_high = raw_ih > 0 ? raw_ih : daily_open * (1 + im)
+implied_low = raw_il > 0 ? raw_il : daily_open * (1 - im)
+
+// ============================================================
+// V4 标准化参数 (基于数据分析)
+// ============================================================
+group_v4 = "=== V4 标准化参数 ==="
+momentum_th_g_plus = input.float(0.13, "G+ 动量阈值 %", minval=0.05, maxval=0.3, step=0.01, group=group_v4,
+     tooltip="G+ 波动较小，0.13% 对应 ~15% 触发率")
+momentum_th_g_minus = input.float(0.26, "G- 动量阈值 %", minval=0.05, maxval=0.5, step=0.01, group=group_v4,
+     tooltip="G- 波动是 G+ 的 2.0x，0.26% 对应 ~15% 触发率")
+lookback = input.int(15, "动量回望期", minval=5, maxval=30, group=group_v4)
+
+// 信号过滤
+group_filter = "=== 信号过滤 ==="
+enable_gp_long = input.bool(true, "启用 G+ 做多", group=group_filter, tooltip="G+ 跌后做多 (均值回归)")
+enable_gp_short = input.bool(true, "启用 G+ 做空", group=group_filter, tooltip="G+ 涨后做空 (均值回归)")
+enable_gn_long = input.bool(true, "启用 G- 做多", group=group_filter, tooltip="G- 涨后做多 (趋势延续)")
+enable_gn_short = input.bool(true, "启用 G- 做空", group=group_filter, tooltip="G- 跌后做空 (趋势延续)")
+
+// MR 过滤设置 (可选)
+group_mr = "=== Move Ratio 设置 ==="
+filter_by_mr = input.bool(false, "启用MR过滤", group=group_mr,
+     tooltip="启用后仅显示符合MR范围的信号。默认关闭(MR仅作为质量参考)")
+mr_filter_min = input.float(0.5, "MR过滤最小值", minval=0.0, maxval=2.0, step=0.1, group=group_mr,
+     tooltip="★☆☆观望:<50% | ★★☆可选:50-70% | ★★★推荐:>70%")
+mr_filter_max = input.float(2.0, "MR过滤最大值", minval=0.5, maxval=5.0, step=0.1, group=group_mr)
+
+// 显示设置
+group_display = "=== 显示设置 ==="
+show_gamma_zone = input.bool(true, "显示Gamma区域背景", group=group_display)
+show_signals = input.bool(true, "显示交易信号", group=group_display)
+show_levels = input.bool(true, "显示Key Levels", group=group_display)
+show_mr_quality = input.bool(true, "显示MR质量标记", group=group_display,
+     tooltip="★★★推荐(MR>=70%) | ★★☆可选(50-70%) | ★☆☆观望(<50%)")
+
+// ============================================================
+// 核心计算
+// ============================================================
+
+// Gamma环境判断
+is_gamma_positive = close > hedge_wall
+is_gamma_negative = close < hedge_wall
+
+// Move Ratio计算 (用于质量评估，可选作为过滤条件)
+implied_range = implied_high - implied_low
+price_from_open = math.abs(close - daily_open)
+move_ratio = implied_range > 0 ? price_from_open / implied_range : 0
+
+// MR 分级 (三级)
+mr_grade_recommend = move_ratio >= 0.7  // ★★★推荐: MR>=70%
+mr_grade_optional = move_ratio >= 0.5 and move_ratio < 0.7  // ★★☆可选: 50-70%
+mr_grade_watch = move_ratio < 0.5  // ★☆☆观望: <50%
+
+// MR 过滤条件
+mr_filter_pass = not filter_by_mr or (move_ratio >= mr_filter_min and move_ratio <= mr_filter_max)
+
+// 距离计算
+dist_to_hedge_wall = (close - hedge_wall) / close
+dist_to_support = support1 > 0 ? (close - support1) / close : 0
+dist_to_resistance = resistance1 > 0 ? (resistance1 - close) / close : 0
+
+// 距离分类
+dist_hw_near = math.abs(dist_to_hedge_wall) < 0.003
+dist_hw_medium = math.abs(dist_to_hedge_wall) >= 0.003 and math.abs(dist_to_hedge_wall) < 0.007
+dist_hw_far = math.abs(dist_to_hedge_wall) >= 0.007
+
+// ============================================================
+// V4 动量计算 - 标准化阈值
+// ============================================================
+price_change_lb = (close - close[lookback]) / close[lookback]
+
+// 根据 Gamma 环境选择阈值
+threshold_current = is_gamma_positive ? momentum_th_g_plus / 100 : momentum_th_g_minus / 100
+
+after_rise = price_change_lb > threshold_current
+after_drop = price_change_lb < -threshold_current
+
+// ============================================================
+// V4 信号生成 - 只需要 Gamma + 动量方向
+// ============================================================
+
+// G+ 做多 (均值回归: 跌后做多)
+signal_gp_long = is_gamma_positive and after_drop
+
+// G+ 做空 (均值回归: 涨后做空)
+signal_gp_short = is_gamma_positive and after_rise
+
+// G- 做多 (趋势延续: 涨后做多)
+signal_gn_long = is_gamma_negative and after_rise
+
+// G- 做空 (趋势延续: 跌后做空)
+signal_gn_short = is_gamma_negative and after_drop
+
+// 应用启用过滤和MR过滤
+final_gp_long = enable_gp_long and signal_gp_long and mr_filter_pass
+final_gp_short = enable_gp_short and signal_gp_short and mr_filter_pass
+final_gn_long = enable_gn_long and signal_gn_long and mr_filter_pass
+final_gn_short = enable_gn_short and signal_gn_short and mr_filter_pass
+
+any_long = final_gp_long or final_gn_long
+any_short = final_gn_short or final_gp_short
+any_signal = any_long or any_short
+
+// MR 分级信号 (三级)
+// ★★★推荐 (MR>=70%)
+rec_gp_long = final_gp_long and mr_grade_recommend
+rec_gp_short = final_gp_short and mr_grade_recommend
+rec_gn_long = final_gn_long and mr_grade_recommend
+rec_gn_short = final_gn_short and mr_grade_recommend
+
+// ★★☆可选 (50-70%)
+opt_gp_long = final_gp_long and mr_grade_optional
+opt_gp_short = final_gp_short and mr_grade_optional
+opt_gn_long = final_gn_long and mr_grade_optional
+opt_gn_short = final_gn_short and mr_grade_optional
+
+// ★☆☆观望 (<50%)
+watch_gp_long = final_gp_long and mr_grade_watch
+watch_gp_short = final_gp_short and mr_grade_watch
+watch_gn_long = final_gn_long and mr_grade_watch
+watch_gn_short = final_gn_short and mr_grade_watch
+
+// ============================================================
+// 可视化 - Key Levels
+// ============================================================
+plot(show_levels ? hedge_wall : na, "Hedge Wall", color=color.new(color.orange, 0), linewidth=2)
+plot(show_levels and support1 > 0 ? support1 : na, "Support 1", color=color.new(color.green, 0), linewidth=2)
+plot(show_levels and support2 > 0 ? support2 : na, "Support 2", color=color.new(color.green, 30), linewidth=1)
+plot(show_levels and resistance1 > 0 ? resistance1 : na, "Resistance 1", color=color.new(color.red, 0), linewidth=2)
+plot(show_levels and resistance2 > 0 ? resistance2 : na, "Resistance 2", color=color.new(color.red, 30), linewidth=1)
+
+// Gamma背景
+bgcolor(show_gamma_zone ? (is_gamma_positive ? color.new(color.green, 95) : color.new(color.red, 95)) : na)
+
+// ============================================================
+// 可视化 - 信号 (带MR三级分类标记)
+// ============================================================
+// G+ 做多 - ★★★推荐 (MR>=70%)
+plotshape(show_signals and rec_gp_long and show_mr_quality, title="G+ Long ★★★",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.green, 0), text="G+L★★★")
+// G+ 做多 - ★★☆可选 (50-70%)
+plotshape(show_signals and opt_gp_long and show_mr_quality, title="G+ Long ★★☆",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.green, 20), text="G+L★★")
+// G+ 做多 - ★☆☆观望 (<50%)
+plotshape(show_signals and watch_gp_long and show_mr_quality, title="G+ Long ★☆☆",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.green, 50), text="G+L★")
+// G+ 做多 - 无MR标记
+plotshape(show_signals and final_gp_long and not show_mr_quality, title="G+ Long",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.green, 40), text="G+L")
+
+// G- 做多 - ★★★推荐 (MR>=70%)
+plotshape(show_signals and rec_gn_long and show_mr_quality, title="G- Long ★★★",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.lime, 0), text="G-L★★★")
+// G- 做多 - ★★☆可选 (50-70%)
+plotshape(show_signals and opt_gn_long and show_mr_quality, title="G- Long ★★☆",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.lime, 20), text="G-L★★")
+// G- 做多 - ★☆☆观望 (<50%)
+plotshape(show_signals and watch_gn_long and show_mr_quality, title="G- Long ★☆☆",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.lime, 50), text="G-L★")
+// G- 做多 - 无MR标记
+plotshape(show_signals and final_gn_long and not show_mr_quality, title="G- Long",
+     location=location.belowbar, style=shape.triangleup,
+     size=size.normal, color=color.new(color.lime, 40), text="G-L")
+
+// G- 做空 - ★★★推荐 (MR>=70%)
+plotshape(show_signals and rec_gn_short and show_mr_quality, title="G- Short ★★★",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.red, 0), text="G-S★★★")
+// G- 做空 - ★★☆可选 (50-70%)
+plotshape(show_signals and opt_gn_short and show_mr_quality, title="G- Short ★★☆",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.red, 20), text="G-S★★")
+// G- 做空 - ★☆☆观望 (<50%)
+plotshape(show_signals and watch_gn_short and show_mr_quality, title="G- Short ★☆☆",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.red, 50), text="G-S★")
+// G- 做空 - 无MR标记
+plotshape(show_signals and final_gn_short and not show_mr_quality, title="G- Short",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.red, 40), text="G-S")
+
+// G+ 做空 - ★★★推荐 (MR>=70%)
+plotshape(show_signals and rec_gp_short and show_mr_quality, title="G+ Short ★★★",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.orange, 0), text="G+S★★★")
+// G+ 做空 - ★★☆可选 (50-70%)
+plotshape(show_signals and opt_gp_short and show_mr_quality, title="G+ Short ★★☆",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.orange, 20), text="G+S★★")
+// G+ 做空 - ★☆☆观望 (<50%)
+plotshape(show_signals and watch_gp_short and show_mr_quality, title="G+ Short ★☆☆",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.orange, 50), text="G+S★")
+// G+ 做空 - 无MR标记
+plotshape(show_signals and final_gp_short and not show_mr_quality, title="G+ Short",
+     location=location.abovebar, style=shape.triangledown,
+     size=size.normal, color=color.new(color.orange, 40), text="G+S")
+
+// ============================================================
+// 信息面板
+// ============================================================
+var table info_panel = table.new(position.top_right, 2, 14, bgcolor=color.new(color.black, 80), border_width=1)
+
+if barstate.islast
+    // 日期预设
+    table.cell(info_panel, 0, 0, "日期预设", text_color=color.white)
+    table.cell(info_panel, 1, 0, date_preset, text_color=color.lime)
+
+    // Gamma环境
+    gamma_str = is_gamma_positive ? "G+ (均值回归)" : "G- (趋势延续)"
+    gamma_clr = is_gamma_positive ? color.green : color.red
+    table.cell(info_panel, 0, 1, "Gamma环境", text_color=color.white)
+    table.cell(info_panel, 1, 1, gamma_str, text_color=gamma_clr)
+
+    // Key Levels
+    table.cell(info_panel, 0, 2, "HW/IH/IL", text_color=color.white)
+    table.cell(info_panel, 1, 2, str.tostring(hedge_wall, "#") + "/" + str.tostring(implied_high, "#") + "/" + str.tostring(implied_low, "#"), text_color=color.orange)
+
+    // 动量阈值
+    th_pct = threshold_current * 100
+    table.cell(info_panel, 0, 3, "动量阈值", text_color=color.white)
+    table.cell(info_panel, 1, 3, str.tostring(th_pct, "#.##") + "%", text_color=color.yellow)
+
+    // 当前动量
+    momentum_pct = price_change_lb * 100
+    momentum_str = after_drop ? "下跌触发 ↓" : after_rise ? "上涨触发 ↑" : "未触发"
+    momentum_clr = after_drop ? color.red : after_rise ? color.green : color.gray
+    table.cell(info_panel, 0, 4, "当前动量", text_color=color.white)
+    table.cell(info_panel, 1, 4, str.tostring(momentum_pct, "#.##") + "% " + momentum_str, text_color=momentum_clr)
+
+    // Move Ratio (三级分类)
+    mr_pct = move_ratio * 100
+    mr_str = mr_grade_recommend ? "★★★推荐" : mr_grade_optional ? "★★☆可选" : "★☆☆观望"
+    mr_clr = mr_grade_recommend ? color.lime : mr_grade_optional ? color.yellow : color.gray
+    table.cell(info_panel, 0, 5, "Move Ratio", text_color=color.white)
+    table.cell(info_panel, 1, 5, str.tostring(mr_pct, "#.#") + "% " + mr_str, text_color=mr_clr)
+
+    // 距离HW
+    dist_hw_str = dist_hw_near ? "近(<0.3%)" : dist_hw_medium ? "中(0.3-0.7%)" : "远(>0.7%)"
+    table.cell(info_panel, 0, 6, "距HW", text_color=color.white)
+    table.cell(info_panel, 1, 6, str.tostring(dist_to_hedge_wall * 100, "#.##") + "% " + dist_hw_str, text_color=color.orange)
+
+    table.cell(info_panel, 0, 7, "──────", text_color=color.gray)
+    table.cell(info_panel, 1, 7, "──────", text_color=color.gray)
+
+    // 信号
+    signal_str = final_gp_long ? "G+做多" : final_gp_short ? "G+做空" : final_gn_long ? "G-做多" : final_gn_short ? "G-做空" : "无信号"
+    signal_clr = any_long ? color.green : any_short ? color.red : color.gray
+    table.cell(info_panel, 0, 8, "当前信号", text_color=color.white)
+    table.cell(info_panel, 1, 8, signal_str, text_color=signal_clr)
+
+    // 信号质量
+    quality_str = (hq_gp_long or hq_gp_short or hq_gn_long or hq_gn_short) ? "★ 高质量" : any_signal ? "普通" : "-"
+    quality_clr = (hq_gp_long or hq_gp_short or hq_gn_long or hq_gn_short) ? color.lime : any_signal ? color.yellow : color.gray
+    table.cell(info_panel, 0, 9, "信号质量", text_color=color.white)
+    table.cell(info_panel, 1, 9, quality_str, text_color=quality_clr)
+
+    // 操作建议
+    rec_str = any_long ? "做多" : any_short ? "做空" : "观望"
+    table.cell(info_panel, 0, 10, "操作建议", text_color=color.white)
+    table.cell(info_panel, 1, 10, rec_str, text_color=signal_clr)
+
+// ============================================================
+// 警报
+// ============================================================
+alertcondition(final_gp_long, title="G+ Long", message="G+ 均值回归做多信号")
+alertcondition(final_gp_short, title="G+ Short", message="G+ 均值回归做空信号")
+alertcondition(final_gn_long, title="G- Long", message="G- 趋势延续做多信号")
+alertcondition(final_gn_short, title="G- Short", message="G- 趋势延续做空信号")
+alertcondition(hq_gp_long or hq_gn_long, title="HQ Long", message="高质量做多信号 (MR>=50%)")
+alertcondition(hq_gp_short or hq_gn_short, title="HQ Short", message="高质量做空信号 (MR>=50%)")
+alertcondition(any_signal, title="Any Signal", message="有交易信号")
